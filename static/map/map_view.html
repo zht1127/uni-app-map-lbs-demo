@@ -1,0 +1,156 @@
+<!--
+	App 端地图壳页面（web-view 加载）
+	只负责地图渲染 + 底层容器，所有 UI 由 Vue 通过 evalJS 注入
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8">
+	<link rel="icon" href="data:;base64,iVBORw0KGgo=">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+	<link rel="stylesheet" href="https://location-dev.newayz.com/aimap-gl-js/v2.6.0/aimap-gl.css" />
+	<script src="https://location-dev.newayz.com/aimap-gl-js/v2.6.0/aimap-gl.js"></script>
+	<script src="https://js.cdn.aliyun.dcloud.net.cn/dev/uni-app/uni.webview.1.5.2.js"></script>
+	<title>Map</title>
+	<style>
+		html, body { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; position: fixed; top: 0; left: 0; }
+		#map { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+	</style>
+</head>
+<body>
+	<div id="map"></div>
+	<div id="uiContainer" onclick="handleUIClick(event)"></div>
+
+	<script>
+		var map = null;
+		var userMarker = null;
+
+		function postMsg(data) { uni.postMessage({ data: data }); }
+
+		// UI 容器事件代理：按钮点击 → postMessage 到 Vue
+		function handleUIClick(e) {
+			var btn = e.target.closest('[data-id]');
+			if (btn) postMsg({ type: 'buttonClick', id: btn.getAttribute('data-id') });
+		}
+
+		// 初始化地图
+		aimap.accessToken = 'YOUR_MAP_ACCESS_TOKEN'; // 替换为你的 accessToken
+		aimap.baseApiUrl = 'https://location-dev.newayz.com';
+		setTimeout(function() {
+			try {
+				var el = document.getElementById('map');
+				el.style.width = el.clientWidth + 'px';
+				el.style.height = el.clientHeight + 'px';
+				map = new aimap.Map({
+					container: el,
+					center: [121.50547, 31.236532],
+					zoom: 15, pitch: 0, bearing: 0,
+					style: 'aimap://styles/aimap/white-21Q4-v1',
+					resize: true
+				});
+				map.on('click', function(e) {
+					postMsg({ type: 'mapEvent', event: 'click', data: { longitude: e.lngLat.lng, latitude: e.lngLat.lat } });
+				});
+			} catch(e) { console.error('地图初始化失败：', e); }
+		}, 500);
+
+		// ========== Vue 注入 UI ==========
+
+		function __mapSetUI(html) {
+			document.getElementById('uiContainer').innerHTML = html;
+		}
+
+		// ========== 基础操作 ==========
+
+		function __mapGetCenter() {
+			if (!map) return;
+			var c = map.getCenter();
+			postMsg({ type: 'mapEvent', event: 'center', data: { longitude: c.lng, latitude: c.lat } });
+		}
+
+		function __mapGetBounds() {
+			if (!map) return;
+			var b = map.getBounds();
+			postMsg({ type: 'mapEvent', event: 'bounds', data: {
+				sw: { latitude: b.getSouth(), longitude: b.getWest() },
+				ne: { latitude: b.getNorth(), longitude: b.getEast() }
+			}});
+		}
+
+		function __mapFlyTo(center, zoom) {
+			if (!map) return;
+			map.flyTo({ center: [center.longitude, center.latitude], zoom: zoom || 15, speed: 1, curve: 2, easing: function(t) { return t; } });
+		}
+
+		function __mapMoveTo(center) {
+			if (!map) return;
+			map.setCenter([center.longitude, center.latitude]);
+		}
+
+		function __mapFitBounds(bounds, padding) {
+			if (!map) return;
+			map.fitBounds(
+				[[bounds.sw.longitude, bounds.sw.latitude], [bounds.ne.longitude, bounds.ne.latitude]],
+				{ padding: padding || 50 }
+			);
+		}
+
+		function __mapSetStyle(style) {
+			if (!map) return;
+			map.setStyle(style);
+		}
+
+		// ========== 覆盖物 ==========
+
+		function __mapAddMarker(point, options) {
+			if (!map) return;
+			var m = new aimap.Marker().setLngLat([point.longitude, point.latitude]).addTo(map);
+			if (options && options.title) {
+				m.setPopup(new aimap.Popup({ offset: [0, -30] }).setText(options.title));
+				m.togglePopup();
+			}
+		}
+
+		function __mapAddPolyline(points, options) {
+			if (!map) return;
+			var coords = points.map(function(p) { return [p.longitude, p.latitude]; });
+			var id = 'line-' + Date.now();
+			map.addLayer({
+				id: id, type: 'line',
+				source: { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } } },
+				paint: {
+					'line-color': (options && options.color) || '#007aff',
+					'line-width': (options && options.width) || 3,
+					'line-dasharray': (options && options.dashed) ? [2, 2] : [1, 0]
+				}
+			});
+		}
+
+		function __mapAddPolygon(points, options) {
+			if (!map) return;
+			var coords = points.map(function(p) { return [p.longitude, p.latitude]; });
+			if (coords.length > 0) coords.push(coords[0]);
+			var id = 'polygon-' + Date.now();
+			map.addLayer({
+				id: id, type: 'fill',
+				source: { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [coords] } } },
+				paint: {
+					'fill-color': (options && options.fillColor) || 'rgba(0,122,255,0.2)',
+					'fill-outline-color': (options && options.strokeColor) || '#007aff'
+				}
+			});
+		}
+
+		function __mapClear() {}
+
+		// ========== 定位更新 ==========
+
+		function __mapUpdateLocation(data) {
+			if (!map) return;
+			if (userMarker) { userMarker.remove(); userMarker = null; }
+			userMarker = new aimap.Marker().setLngLat([data.longitude, data.latitude]).addTo(map);
+			map.setCenter([data.longitude, data.latitude]);
+		}
+	</script>
+</body>
+</html>

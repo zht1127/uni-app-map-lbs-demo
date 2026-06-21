@@ -1,0 +1,7 @@
+.hbuilderx
+node_modules
+unpackage
+.DS_Store
+*.log
+IMPLEMENTATION.md
+BLOG.md
