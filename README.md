@@ -1,6 +1,6 @@
 # uni-app 跨端地图 Demo
 
-基于 uni-app 的跨端地图定位示例，使用**位置智（newayz）aimap-gl** 地图 SDK 和定位服务。
+基于 uni-app 的跨端地图定位示例，使用**维智** 地图 SDK 和定位服务。
 
 支持 **App（Android/iOS）、微信小程序、H5** 三端运行。
 
@@ -66,8 +66,8 @@ utils/
 ## 技术栈
 
 - uni-app（Vue 2）
-- 位置智 aimap-gl（Mapbox GL JS 分支）
-- 位置智定位 SDK
+- 维智Web地图
+- 维智定位 SDK
 
 ## 目录结构
 
