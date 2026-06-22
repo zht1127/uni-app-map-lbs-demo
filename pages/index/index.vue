@@ -79,7 +79,7 @@
 				// 按钮定义（App 端通过 evalJS 下发到 map_view.html，小程序/H5 通过 v-for 渲染）
 				buttons: [
 					{ id: 'singleClick',    text: '单次定位' },
-					{ id: 'conitueClick',   text: '连续定位' },
+					{ id: 'continueClick',   text: '连续定位' },
 					{ id: 'stopLocation',   text: '停止定位' },
 					{ id: 'getAddress',     text: '获取地址' },
 					{ id: 'getGeoCode',     text: '正地理' },
@@ -113,7 +113,7 @@
 			handleBtnClick(id) {
 				const methodMap = {
 					singleClick:      this.singleClick,
-					conitueClick:     this.conitueClick,
+					continueClick:     this.continueClick,
 					stopLocation:     this.stopLocation,
 					getAddress:       this.getAddress,
 					getGeoCode:       this.getGeoCode,
@@ -330,21 +330,70 @@
 			},
 
 			// ========== 定位业务逻辑 ==========
+			_requestLocationPermission(callback) {
+				const setting = uni.getSystemSetting();
+				if (setting.locationEnabled) {
+					callback();
+					return;
+				}
+				uni.getLocation({
+					type: 'wgs84',
+					isHighAccuracy: true,
+					success: () => {
+						callback();
+					},
+					fail: (e) => {
+						console.log('定位权限请求失败：', e.errMsg);
+						uni.showModal({
+							title: '需要定位权限',
+							content: '请在系统设置中开启定位权限，以便获取您的位置信息',
+							confirmText: '去设置',
+							success: (res) => {
+								if (res.confirm) {
+									// #ifdef APP-PLUS
+									if (plus.os.name === 'iOS') {
+										plus.runtime.openURL('app-settings:');
+									} else {
+										const main = plus.android.runtimeMainActivity();
+										const Intent = plus.android.importClass('android.content.Intent');
+										const Settings = plus.android.importClass('android.provider.Settings');
+										const Uri = plus.android.importClass('android.net.Uri');
+										const intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+										intent.setData(Uri.fromParts('package', main.getPackageName(), null));
+										main.startActivity(intent);
+									}
+									// #endif
+								}
+							}
+						});
+					}
+				});
+			},
 			singleClick() {
 				const deviceInfo = uni.getDeviceInfo();
 				wzLocation.initOption(LOCATION_KEY, deviceInfo.deviceId, true, 0);
-				wzLocation.getLocation(
-					res => { res.timestamp = new Date(res.timestamp).toLocaleString(); this.wzLocation = res; this._updateMapLocation(res); },
-					fail => console.log("fail", fail.code, fail.msg)
-				);
+				this._requestLocationPermission(() => {
+					wzLocation.getLocation(
+						res => { res.timestamp = new Date(res.timestamp).toLocaleString(); this.wzLocation = res; this._updateMapLocation(res); },
+						fail => {
+							console.log("fail", fail.code, fail.msg);
+							uni.showToast({ title: fail.msg || '定位失败', icon: 'none', duration: 2000 });
+						}
+					);
+				});
 			},
-			conitueClick() {
+			continueClick() {
 				const deviceInfo = uni.getDeviceInfo();
 				wzLocation.initOption(LOCATION_KEY, deviceInfo.deviceId, false, 10000);
-				wzLocation.getLocation(
-					res => { res.timestamp = new Date(res.timestamp).toLocaleString(); this.wzLocation = res; this._updateMapLocation(res); },
-					fail => console.log("fail", fail.code, fail.msg)
-				);
+				this._requestLocationPermission(() => {
+					wzLocation.getLocation(
+						res => { res.timestamp = new Date(res.timestamp).toLocaleString(); this.wzLocation = res; this._updateMapLocation(res); },
+						fail => {
+							console.log("fail", fail.code, fail.msg);
+							uni.showToast({ title: fail.msg || '定位失败', icon: 'none', duration: 2000 });
+						}
+					);
+				});
 			},
 			getAddress() {
 				wzLocation.setAk(LOCATION_KEY);
